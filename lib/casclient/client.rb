@@ -31,6 +31,12 @@ module CASClient
       
       @log = CASClient::LoggerWrapper.new
       @log.set_real_logger(conf[:logger]) if conf[:logger]
+
+      @use_client_certificate = conf[:use_client_certificate] || false
+      if @use_client_certificate
+        @cert = conf[:client_certificate]
+        @key = conf[:client_certificate_key]
+      end
     end
     
     def login_url
@@ -217,10 +223,7 @@ module CASClient
     def request_cas_response(uri, type)
       log.debug "Requesting CAS response for URI #{uri}"
       
-      uri = URI.parse(uri) unless uri.kind_of? URI
-      https = Net::HTTP.new(uri.host, uri.port)
-      https.use_ssl = (uri.scheme == 'https')
-      https.verify_mode = (@force_ssl_verification ? OpenSSL::SSL::VERIFY_PEER : OpenSSL::SSL::VERIFY_NONE)
+      https = net_http_factory(uri)
       
       begin
         raw_res = https.start do |conn|
@@ -266,6 +269,22 @@ module CASClient
         vals.each {|v| pairs << (v.nil? ? CGI.escape(k) : "#{CGI.escape(k)}=#{CGI.escape(v)}")}
       end
       pairs.join("&")
+    end
+
+    # Returns a Net::HTTP object with optional client certificate
+    def net_http_factory(uri)
+      uri = URI.parse(uri) unless uri.kind_of? URI
+      https = Net::HTTP.new(uri.host, uri.port)
+      https.use_ssl = (uri.scheme == 'https')
+      https.verify_mode = (@force_ssl_verification ? OpenSSL::SSL::VERIFY_PEER : OpenSSL::SSL::VERIFY_NONE)
+
+      if @use_client_certificate
+        log.info "Adding client certificate to Net::HTTP"
+        https.cert = OpenSSL::X509::Certificate.new(File.read(@cert))
+        https.key = OpenSSL::PKey::RSA.new(File.read(@key)) 
+      end
+
+      https
     end
   end
 end
