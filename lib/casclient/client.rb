@@ -32,11 +32,9 @@ module CASClient
       @log = CASClient::LoggerWrapper.new
       @log.set_real_logger(conf[:logger]) if conf[:logger]
 
-      @use_client_certificate = conf[:use_client_certificate] || false
-      if @use_client_certificate
-        @cert = conf[:client_certificate]
-        @key = conf[:client_certificate_key]
-      end
+      @use_client_certificate = conf[:use_client_certificate]
+      @cert_file = conf[:cert_file]
+      @key_file = conf[:key_file]
     end
     
     def login_url
@@ -110,9 +108,7 @@ module CASClient
       
       log.debug "Checking if CAS server at URI '#{uri}' is up..."
       
-      https = Net::HTTP.new(uri.host, uri.port)
-      https.use_ssl = (uri.scheme == 'https')
-      https.verify_mode = (@force_ssl_verification ? OpenSSL::SSL::VERIFY_PEER : OpenSSL::SSL::VERIFY_NONE)
+      https = net_http_factory(uri)
       
       begin
         raw_res = https.start do |conn|
@@ -155,9 +151,7 @@ module CASClient
     # tickets in this manner is not part of the official CAS spec.
     def request_login_ticket
       uri = URI.parse(login_url+'Ticket')
-      https = Net::HTTP.new(uri.host, uri.port)
-      https.use_ssl = (uri.scheme == 'https')
-      https.verify_mode = (@force_ssl_verification ? OpenSSL::SSL::VERIFY_PEER : OpenSSL::SSL::VERIFY_NONE)
+      https = net_http_factory(uri)
       res = https.post(uri.path, ';')
       
       raise CASException, res.body unless res.kind_of? Net::HTTPSuccess
@@ -196,10 +190,7 @@ module CASClient
 #      https = Net::HTTP.new(uri.host, uri.port)
 #      https.use_ssl = (uri.scheme == 'https')
 #      res = https.post(uri.path, ';')
-      uri = URI.parse(uri) unless uri.kind_of? URI
-      https = Net::HTTP.new(uri.host, uri.port)
-      https.use_ssl = (uri.scheme == 'https')
-      https.verify_mode = (@force_ssl_verification ? OpenSSL::SSL::VERIFY_PEER : OpenSSL::SSL::VERIFY_NONE)
+      https = net_http_factory(uri)
       
       res = https.start do |conn|
         conn.get("#{uri.path}?#{uri.query}")
@@ -280,11 +271,30 @@ module CASClient
 
       if @use_client_certificate
         log.info "Adding client certificate to Net::HTTP"
-        https.cert = OpenSSL::X509::Certificate.new(File.read(@cert))
-        https.key = OpenSSL::PKey::RSA.new(File.read(@key)) 
+        https.cert = load_cert_file(@cert_file)
+        https.key = load_key_file(@key_file) 
       end
-
       https
+    end
+
+    def load_cert_file(cert_file)
+      log.debug "cert_file: #{cert_file}"
+      begin
+        OpenSSL::X509::Certificate.new(File.read(cert_file))
+      rescue Exception => e
+        log.error "There was a problem with the cert_file! (#{e.inspect})"
+        raise "There was a problem with the cert_file! (#{e.message})"
+      end
+    end
+
+    def load_key_file(key_file)
+      log.debug "key_file: #{key_file}"
+      begin
+        OpenSSL::PKey::RSA.new(File.read(key_file)) 
+      rescue Exception => e
+        log.error "There was a problem with the key_file! (#{e.inspect})"
+        raise "There was a problem with the key_file! (#{e.message})"
+      end
     end
   end
 end
