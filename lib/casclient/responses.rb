@@ -77,7 +77,7 @@ module CASClient
           if v.blank?
             @extra_attributes[k] = nil
           else
-            @extra_attributes[k] = YAML.load(v)
+            @extra_attributes[k] = (v.kind_of?(String)) ? YAML.load(v) : v
           end
         end
       elsif is_failure?
