@@ -71,15 +71,23 @@ module CASClient
           el.namespaces.each {|k,v| el.add_namespace(k,v)}
           @extra_attributes.merge!(Hash.from_xml(el.to_s)) unless (el == cas_user)
         end
-        
+
         # unserialize extra attributes
+        @nested_attributes = {}
         @extra_attributes.each do |k, v|
           if v.blank?
             @extra_attributes[k] = nil
           else
+            if v.kind_of?(Hash)
+              v.each do |key, value|
+                @nested_attributes [key] = (value.kind_of?(String)) ? YAML.load(value) : value
+              end
+            end
             @extra_attributes[k] = (v.kind_of?(String)) ? YAML.load(v) : v
           end
         end
+        # Merge nested attributes into main extra_attributes
+        @extra_attributes.merge!(@nested_attributes)
       elsif is_failure?
         @failure_code = @xml.elements['//cas:authenticationFailure'].attributes['code']
         @failure_message = @xml.elements['//cas:authenticationFailure'].text.strip
